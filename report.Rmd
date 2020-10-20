@@ -1,0 +1,399 @@
+---
+title: "Linkage mapping: `r cond`.`r trt`"
+output: html_document
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+mainfont: Calibri Light
+---
+
+```{r, echo = T, warning = F, message = F, results = "asis"}
+
+# load packages
+library(tidyverse)
+library(linkagemapping)
+
+# CHANGE VARIABLES HERE
+# trt <- input$trait_input
+# cond <- input$drug_input
+# strainset <- input$set_input
+# qtl_marker <- input$whichqtl
+
+```
+
+```{r, echo = T, warning = F, message = F, results = "asis", eval = F}
+
+###########################################
+# Get data on local computer to run plots #
+###########################################
+
+# download mapping data from Andersen Lab Dropbox
+if(strainset == 2) {
+    load(glue::glue("~/Dropbox/AndersenLab/RCode/Linkage mapping/RIAILsMappings/20180829/data/{cond}-GWER.chromosomal.annotated.Rda"))
+} else {
+    load(glue::glue("~/Dropbox/AndersenLab/RCode/Linkage mapping/RIAILsMappings/set1_20190612/data/{cond}-GWER.proximal.annotated.Rda"))
+}
+
+# download RIAIL phenotype and genotype data from Andersen Lab Dropbox
+load("~/Dropbox/AndersenLab/RCode/Linkage mapping/RIAILsMappings/RIAIL_data/allRIAILsregressed.Rda")
+# >> This (below) is also in linkagemapping::load_cross_obj("N2xCB4856cross_full")
+load("~/Dropbox/AndersenLab/RCode/Linkage mapping/RIAILsMappings/RIAIL_data/N2xCB4856cross_full2.Rda") 
+
+# load eQTL data from Andersen Lab Dropbox
+eqtlmap <- data.table::fread("~/Dropbox/AndersenLab/RCode/Linkage mapping/eQTLmapping/eqtlmap.tsv")
+load("~/Dropbox/AndersenLab/RCode/Linkage mapping/eQTLmapping/all_probe_info.Rda")
+load("~/Dropbox/AndersenLab/RCode/Linkage mapping/gene_annotations.Rda")
+
+```
+
+```{r, echo = T, warning = F, message = F, results = 'asis'}
+
+# source function for query_genes originally here: ~/Dropbox/AndersenLab/LabFolders/Katie/scripts_kse/NIL_narrowing.R
+query_genes <- function(region, GO = NULL, strain = "CB4856") {
+    
+    # filter eqtl to > 5% VE
+    eqtlmap2 <- eqtlmap %>%
+        dplyr::filter(var_exp >= 0.05)
+    
+    # how many genes are in the interval?
+    all_genes <- cegwas2::query_vcf(region, impact = "ALL", samples = strain)
+    print(glue::glue("There are {length(unique(all_genes$gene_id))} genes in the interval {region}"))
+    
+    # how many eQTL map to this region?
+    chrom <- stringr::str_split_fixed(region, ":", 2)[,1]
+    left_pos <- as.numeric(stringr::str_split_fixed(stringr::str_split_fixed(region, ":", 2)[,2], "-", 2)[,1])
+    right_pos <- as.numeric(stringr::str_split_fixed(stringr::str_split_fixed(region, ":", 2)[,2], "-", 2)[,2])
+    
+    all_eQTL <- eqtlmap2 %>%
+        dplyr::filter(chr == chrom,
+                      ci_l_pos < right_pos,
+                      ci_r_pos > left_pos)
+    print(glue::glue("There are {nrow(all_eQTL)} eQTL ({length(unique(all_eQTL$trait))} traits) with VE > 5% that map to {region}"))
+    
+    # all eQTL probes
+    all_eQTL_probes <- all_probe_info %>%
+        dplyr::filter(probe%in% all_eQTL$trait)
+    
+    ################################################################################
+    # highlight which probes don't map to a gene (some might need fixing by hand)
+    ################################################################################
+    
+    # filter na
+    # filter na
+    na1 <- all_eQTL_probes %>%
+        dplyr::group_by(probe) %>%
+        dplyr::mutate(num_na = sum(is.na(wbgene))/length(wbgene)) %>%
+        dplyr::filter(num_na == 1)
+    
+    unique_probes <- paste(unique(na1$probe), collapse = ",")
+    print(glue::glue("There are {nrow(na1)} genes with an eQTL that need to be hand curated: {unique_probes}"))
+    
+    ################################################################################
+    
+    # which of the eQTL are overlapping with genes in interval?
+    eQTL_outside_CI <- all_eQTL_probes %>%
+        dplyr::filter(!wbgene %in% all_genes$gene_id)
+    print(glue::glue("There are {nrow(all_eQTL)-length(unique(eQTL_outside_CI$wbgene))-nrow(na1)} genes in the region with an eQTL, {length(unique(eQTL_outside_CI$wbgene))} genes outside the region with an eQTL, and {nrow(na1)} unknown"))
+    
+    # Total genes of interest:
+    print(glue::glue("There are at least {length(unique(all_genes$gene_id)) + length(unique(eQTL_outside_CI$wbgene))} total genes of interest."))
+    
+    # how many of the genes in interval have variation?
+    vars <- all_genes %>%
+        dplyr::mutate(GT = ifelse(a1 == REF, "ref", "alt")) %>%
+        dplyr::filter(GT == "alt")
+    
+    # genes with protein coding vars
+    proteincode <- vars %>%
+        dplyr::filter(impact %in% c("MODERATE", "HIGH"))
+    print(glue::glue("There are {length(unique(vars$gene_id))}/{length(unique(all_genes$gene_id))} genes in interval with genetic variation, {length(unique(proteincode$gene_id))}/{length(unique(vars$gene_id))} have protein-coding variation"))
+    
+    # return final dataframe with all info (might be off, only has 133 instead of 134?)
+    total_genes <- gene_annotations %>%
+        dplyr::filter(wbgene %in% c(all_genes$gene_id, eQTL_outside_CI$wbgene)) %>%
+        dplyr::mutate(inside_CI = ifelse(wbgene %in% all_genes$gene_id, T, F),
+                      eqtl = ifelse(wbgene %in% all_eQTL_probes$wbgene, T, F),
+                      vars = ifelse(wbgene %in% vars$gene_id, T, F),
+                      pc_vars = ifelse(wbgene %in% proteincode$gene_id, T, F))
+    
+    distinct <- total_genes %>%
+        dplyr::distinct(wbgene, .keep_all = T)
+    
+    # pc alone
+    pc <- nrow(distinct %>% dplyr::filter(pc_vars == T, eqtl == F))
+    
+    # pc + eQTL
+    pc_eqtl <- nrow(distinct %>% dplyr::filter(pc_vars == T, eqtl == T))
+    
+    # eQTL alone
+    e <- nrow(distinct %>% dplyr::filter(pc_vars == F, eqtl == T))
+    
+    print(glue::glue("There are {pc + pc_eqtl + e} genes with protein-coding variation and/or an eQTL (top priority)"))
+    
+    # return total genes
+    return(total_genes)
+}    
+
+```
+
+# QTL Analysis: Condition
+```{r, echo = T, warning = F, message = F, results = 'asis', fig.height = 8, fig.width = 12}
+
+# plot all traits - CAN FILTER SPECIFIC TRAITS HERE
+newmap <- annotatedmap %>%
+    na.omit() %>%
+    arrange(desc(trait)) %>%
+    dplyr::mutate(n2res = ifelse(eff_size < 0, "yes", "no"),
+                  ci_l_pos = as.numeric(ci_l_pos),
+                  ci_r_pos = as.numeric(ci_r_pos),
+                  pos = as.numeric(pos),
+                  lod = as.numeric(lod),
+                  condition = cond) %>%
+    dplyr::mutate(trait = stringr::str_split_fixed(trait, paste0(cond, "."), 2)[,2])
+
+newmap$trait <- factor(newmap$trait, levels = unique(newmap$trait))
+    
+
+# get chromosome lengths
+chr_lens <- data.frame(chr = c("I", "II", "III", "IV", "V", "X"), 
+                       start = rep(1,6), 
+                       end = c(14972282,15173999,13829314,17450860,20914693,17748731),
+                       condition = newmap$condition[1],
+                       trait = newmap$trait[1])
+
+# plot
+condition_plot <- ggplot(newmap)+
+    aes(x=pos/1E6, y=trait)+
+    theme_bw() +
+    viridis::scale_fill_viridis(name = "LOD") + 
+    viridis::scale_color_viridis(name = "LOD") +
+    geom_segment(aes(x = ci_l_pos/1e6, y = trait, xend = ci_r_pos/1e6, yend = trait, color = lod), size = 2, alpha = 1) +
+    geom_segment(data=chr_lens, aes(x =  start/1e6, xend = end/1e6, y = trait, yend=trait), color='transparent', size =0.1) +
+    geom_point(aes(fill = lod, shape = n2res), color = "black",size = 3, alpha = 1)+
+    scale_shape_manual(values = c("yes" = 24, "no" = 25)) +
+    xlab("Genomic position (Mb)") + ylab("") +
+    guides(shape = FALSE) +
+    theme(axis.text.x = element_text(size=10, face="bold", color="black"),
+          axis.ticks.y = element_blank(),
+          legend.title = element_text(size = 12, face = "bold"), legend.text = element_text(size = 10),
+          legend.key.size = unit(.75, "cm"),
+          panel.grid.major.x = element_line(),
+          panel.grid.major.y = element_line(),
+          panel.grid.minor.y = element_blank(),
+          axis.text.y = element_text(size = 10, face = "bold", color = "black"),
+          axis.title.x = element_text(size=12, face="bold", color= "black"),
+          axis.title.y = element_blank(),
+          strip.text.x = element_text(size=12, face="bold", color="black"),
+          strip.text.y = element_text(size=12, face="bold", color="black", angle = 0),
+          strip.background = element_rect(colour = "black", fill = "white", size = 0.75, linetype = "solid"),
+          plot.title = element_text(size=12, face="bold")) +
+    facet_grid(condition ~ chr, scales = "free_x", space = "free")
+
+condition_plot
+
+```
+
+# QTL Analysis: Trait
+```{r, echo = T, warning = F, message = F, results = 'asis', fig.height = 3, fig.width = 10}
+
+#######################
+# Setup for all plots #
+#######################
+
+# CAN CHANGE TRAIT HERE 
+# trt <- "mean.TOF"
+
+# filter data
+traitmap <- annotatedmap %>%
+    dplyr::filter(trait == glue::glue("{cond}.{trt}"))
+
+pheno <- allRIAILsregressed %>%
+    dplyr::filter(condition == cond,
+                  trait == trt)
+
+drugcross <- linkagemapping::mergepheno(N2xCB4856cross_full2, pheno, strainset)
+        
+####################
+# RIAIL pheno plot #
+####################
+
+
+# only show RIAILs in the specific set
+riailset <- drugcross$pheno %>%
+    dplyr::filter(set == strainset)
+
+# color N2 and CB, show relative phenotypes
+phenodf <- pheno %>%
+    dplyr::filter(strain %in% c(riailset$strain, "N2", "CB4856")) %>%
+    dplyr::mutate(strain_fill = dplyr::case_when(strain == "N2" ~ "n2",
+                                                 strain == "CB4856" ~ "cb",
+                                                 TRUE ~ "RIL")) %>%
+    dplyr::group_by(strain, trait) %>%
+    dplyr::mutate(avg_phen = mean(phenotype, na.rm = T)) %>%
+    dplyr::distinct(strain, trait, .keep_all = T) %>%
+    dplyr::ungroup() %>%
+    dplyr::mutate(norm_pheno = ((avg_phen - min(avg_phen, na.rm = T)) / (max(avg_phen, na.rm = T) - min(avg_phen, na.rm = T)))) %>%
+    dplyr::arrange(norm_pheno)
+
+phenodf$strain <- factor(phenodf$strain, levels = unique(phenodf$strain))
+
+# plot
+barplot <- phenodf %>%
+    ggplot2::ggplot(.) +
+    ggplot2::aes(x = strain, y = norm_pheno, fill = strain_fill, color = strain_fill) +
+    ggplot2::geom_bar(stat = "identity") +
+    ggplot2::scale_fill_manual(values = c("n2" = "orange", "cb" = "blue", "RIL" = "grey")) +
+    ggplot2::scale_color_manual(values = c("n2" = "orange", "cb" = "blue", "RIL" = "grey")) +
+    theme_bw(15) +
+    theme(axis.ticks.x = element_blank(),
+          axis.text.x = element_blank(),
+          panel.grid = element_blank(),
+          axis.title = element_text(face = "bold", color = "black"),
+          axis.text.y = element_text(face = "bold", color = "black"),
+          legend.position = "none") +
+    labs(x = "Strain", y = "Normalized phenotype")
+
+barplot
+
+# do you like the plotly? here is the code!
+# library(plotly)
+# plotly::ggplotly(barplot + aes(text = glue::glue("Strain: {strain}")), tooltip = "text")
+
+####################
+#     LOD plot     #
+####################
+
+lodplot <- linkagemapping::maxlodplot(traitmap) +
+    theme(plot.title = element_blank())
+
+lodplot
+
+####################
+#     PxG plot     #
+####################
+    
+if(nrow(traitmap %>% na.omit()) > 0) {
+    pxgplot <- linkagemapping::pxgplot(drugcross, traitmap) +
+        theme(plot.title = element_blank(),
+              panel.grid = element_blank())
+} else {
+    pxgplot <- ggplot2::ggplot(traitmap) +
+        geom_blank() +
+        geom_text(x = 0.5, y = 0.5, label = "No QTL")
+}
+
+pxgplot
+
+####################
+#     QTL peaks    #
+####################
+
+# peaks data 
+qtl_peaks <- traitmap %>%
+    na.omit() %>%
+    dplyr::arrange(chr, pos) %>%
+    dplyr::select(marker, lod, var_exp, eff_size, ci_l_pos, ci_r_pos)
+
+# like the searchable output? Here is the code!
+library(DT)
+DT::datatable(qtl_peaks)
+
+
+```
+
+# eQTL Overlap
+```{r, echo = T, warning = F, message = F, results = 'asis', fig.height = 6, fig.width = 8}
+
+# filter data
+peaks <- annotatedmap %>%
+    dplyr::filter(trait == glue::glue("{cond}.{trt}")) %>%
+    na.omit() %>%
+    dplyr::filter(marker == qtl_marker)
+
+# get all overlapping eQTL and add the gene names (if known) for each eQTL probe
+if(nrow(peaks > 0)) {
+    all_eQTL <- eqtlmap %>%
+        dplyr::filter(chr == peaks$chr,
+                      ci_l_pos < peaks$ci_r_pos,
+                      ci_r_pos > peaks$ci_l_pos) %>%
+        dplyr::mutate(QTL = peaks$pos) %>%
+    dplyr::left_join(all_probe_info %>% 
+                            dplyr::select(probe:wbgene) %>% 
+                            dplyr::distinct() %>%
+                            dplyr::group_by(probe) %>%
+                            dplyr::mutate(all_genes = paste(unique(gene), collapse = ", "),
+                                          all_genes2 = paste(unique(wbgene), collapse = ", "),
+                                          all_genes3 = paste(all_genes, all_genes2, sep = ", ")) %>%
+                            dplyr::select(probe, gene = all_genes3) %>%
+                            dplyr::mutate(gene = gsub(", NA", "", gene)) %>%
+                            dplyr::distinct(), 
+                     by = c("trait" = "probe")) %>%
+    # color by distant or local (within 1 Mb of peak)
+    dplyr::mutate(class = dplyr::case_when(probe_chr != chr ~ "diff_chr",
+                                           (probe_start + (probe_stop - probe_start)/2) - pos > 1e6 ~ "distant",
+                                           TRUE ~ "cis")) %>%
+    dplyr::select(marker, chr, pos, trait, gene, class, lod:probe_stop, QTL)
+
+    ####################
+    #     eQTL plot    #
+    ####################
+    # factor to order chr
+    all_eQTL$chr <- factor(all_eQTL$chr, levels = c("I", "II", "III", "IV", "V", "X"))
+    all_eQTL$probe_chr <- factor(all_eQTL$probe_chr, levels = c("X", "V", "IV", "III", "II", "I"))
+    
+    # plot eQTL peaks
+    eqtlplot <- ggplot(all_eQTL) +
+        aes(x = pos / 1e6, y = lod, color = class, size = var_exp) +
+        # geom_rect(data=df_chr_length, aes(xmin =  start/1e6, xmax = stop/1e6, ymin = 1, ymax=1.01), color='transparent', fill='transparent', size =0.1, inherit.aes =  F) +
+        geom_point() +
+        facet_grid(~chr, scales = "free", space = "free") +
+        theme_bw(12) +
+        labs(x = "QTL position (Mb)", y = "LOD") +
+        scale_color_manual(values = c("cis" = "grey", "distant" = "yellow", "diff_chr" = "red"), name = "Class") +
+        scale_size_continuous(range = c(0.1,2), guide = "none") +
+        theme(panel.grid = element_blank(),
+              legend.position = "right",
+              axis.title = element_text(face = "bold"),
+              axis.text.y = element_text(face = "bold", color = "black"),
+              axis.text.x = element_text(face = "bold", color = "black", angle = 90),
+              strip.text = element_text(face = "bold")) +
+        scale_alpha(guide = "none") +
+        geom_vline(aes(xintercept = QTL/1e6), linetype = "dashed", color = "blue")
+    
+    eqtlplot
+    
+    # Like the plotly?? Here is the code!
+    # plotly::ggplotly(eqtlplot +
+    #                      aes(text = glue::glue("Probe: {trait}\n Gene: {gene}\n Probe_pos: {probe_chr}:{round(probe_start/1e6, digits = 3)} Mb")), 
+    #                      tooltip = "text")
+}
+
+
+```
+
+# Candidate Genes
+```{r, echo = T, warning = F, message = F, results = 'asis'}
+
+# get the region from the marker
+markerdf <- peaks %>%
+    dplyr::mutate(reg = paste0(chr, ":", ci_l_pos, "-", ci_r_pos))
+
+# next, run query genes - this is the full searchable dataframe!
+if(nrow(markerdf > 0)) {
+    all_genes <- query_genes(markerdf$reg)
+
+    # want a cleaner dataframe with each gene per line?
+    clean_genes <- all_genes%>%
+        dplyr::group_by(wbgene) %>%
+        dplyr::mutate(go_term = paste(go_term, collapse = "; "),
+                      go_name = paste(go_name, collapse = "; "),
+                      go_description = paste(go_description, collapse = "; "))  %>%
+        dplyr::distinct()
+    
+    # show a pretty datatable
+    DT::datatable(clean_genes %>%
+                      dplyr::select(-go_term, -go_description, -gene_class_description, -gene_id) %>%
+                      dplyr::rename(GO_term = go_name))
+}
+
+
+
+```
