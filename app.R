@@ -76,6 +76,8 @@ server <- function(input, output) {
     # plot alllodplots for each condition (or multiple conditions)
     output$genplot <- shiny::renderPlot({
         
+        showModal(modalDialog(footer=NULL, size = "l", tags$div(style = "text-align: center;", "Loading...")))
+        
         # get drug
         cond <- input$drug_input
         strainset <- input$set_input
@@ -105,6 +107,8 @@ server <- function(input, output) {
                                end = c(14972282,15173999,13829314,17450860,20914693,17748731),
                                condition = newmap$condition[1],
                                trait = newmap$trait[1])
+        
+        removeModal()
         
         # plot
         ggplot(newmap)+
@@ -139,6 +143,8 @@ server <- function(input, output) {
    
     # plot linkage defaults (LOD, pxg, riail pheno)
     output$allplots <- shiny::renderUI({
+        
+        showModal(modalDialog(footer=NULL, size = "l", tags$div(style = "text-align: center;", "Loading...")))
         
         # define variables
         trt <- input$trait_input
@@ -232,6 +238,8 @@ server <- function(input, output) {
                               eff_size = round(eff_size, digits = 4))
         })
         
+        removeModal()
+        
         # what to show
         tagList(
             h3("QTL plots:"),
@@ -303,6 +311,8 @@ server <- function(input, output) {
     # Show eQTL overlap
     output$eqtlplot <- plotly::renderPlotly({
         
+        showModal(modalDialog(footer=NULL, size = "l", tags$div(style = "text-align: center;", "Loading...")))
+        
         all_eQTL <- get_eQTL()
         
         # factor to order chr
@@ -328,6 +338,8 @@ server <- function(input, output) {
                   strip.text = element_text(face = "bold")) +
             scale_alpha(guide = "none") +
             geom_vline(aes(xintercept = QTL/1e6), linetype = "dashed", color = "blue")
+        
+        removeModal()
         
         plotly::ggplotly(eplot +
                              aes(text = glue::glue("Probe: {trait}\n Gene: {gene}\n Probe_pos: {probe_chr}:{round(probe_start/1e6, digits = 3)} Mb")), 
@@ -366,37 +378,14 @@ server <- function(input, output) {
         
         # output
         tagList(
-            # h3("Select QTL:"),
             shiny::selectInput(inputId = "whichqtl", label = "Select QTL:", choices = unique(traitmap$marker))
         )
     })
     
-    # get list of QTL to choose from - for eqtl plot
-    # output$qtl2 <- shiny::renderUI({
-    #     
-    #     # get inputs
-    #     trt <- input$trait_input
-    #     cond <- input$drug_input
-    #     strainset <- input$set_input
-    #     # interval <- input$intervals
-    #     
-    #     annotatedmap <- loaddata()
-    #     
-    #     # filter data
-    #     traitmap <- annotatedmap %>%
-    #         dplyr::filter(trait == glue::glue("{cond}.{trt}"),
-    #                       set == strainset) %>%
-    #         na.omit()
-    #     
-    #     # output
-    #     tagList(
-    #         h3("Select QTL:"),
-    #         shiny::selectInput(inputId = "whichqtl2", label = NULL, choices = unique(traitmap$marker))
-    #     )
-    # })
-    
     # candidate gene function dataframe output
     output$candidate_genes <- shiny::renderUI({
+        
+        showModal(modalDialog(footer=NULL, size = "l", tags$div(style = "text-align: center;", "Loading...")))
         
         # first, get QTL
         qtl_marker <- input$whichqtl
@@ -436,6 +425,8 @@ server <- function(input, output) {
             dplyr::ungroup() %>%
             # dplyr::mutate(WormBase = paste0("https://wormbase.org/species/c_elegans/gene/", wbgene)) %>%
             dplyr::mutate(wbgene = paste0("<a href='",paste0("https://wormbase.org/species/c_elegans/gene/", wbgene),"'>",wbgene,"</a>"))
+        
+        removeModal()
 
         output$dataframe <- DT::renderDataTable(escape = FALSE, {
             df
