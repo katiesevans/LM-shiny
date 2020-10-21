@@ -7,7 +7,7 @@ library(plotly)
 library(fst)
 
 # setwd
-# setwd("~/Desktop/LM-shiny/")
+setwd("~/Dropbox/AndersenLab/LabFolders/Katie/git/LM-shiny/")
 # load RIAIL regressed phenotype data to get possible condition/traits
 load("data/N2xCB4856cross_full2.Rda")
 allRIAILsregressed <- fst::read_fst("data/allRIAILsregressed.fst")
@@ -38,24 +38,19 @@ ui <- fluidPage(
       
   # Main panel for plots
   mainPanel(width = 12,
-     # uiOutput("allplots")
+            
      shiny::tabsetPanel(type = "tabs",
                         shiny::tabPanel("QTL Analysis: Condition", shiny::plotOutput("genplot", height = "800px")),
                         shiny::tabPanel("QTL Analysis: Trait",   
-                                        # h3("Trait:"),
-                                        # shiny::selectInput(inputId = "trait_input", label = NULL, choices = unique(allRIAILsregressed$trait)),
                                         shiny::uiOutput("allplots")),
                         shiny::tabPanel("eQTL Overlap",
-                                        # h3(shiny::textOutput("trait_name")), 
-                                        # h3("Trait:"),
-                                        # shiny::selectInput(inputId = "trait_input2", label = NULL, choices = unique(allRIAILsregressed$trait)),
-                                        # shiny::uiOutput("qtl2"),
                                         plotly::plotlyOutput("eqtlplot", height = "500px"),
                                         DT::dataTableOutput("eqtl_data")),
                         shiny::tabPanel("Candidate Genes",
                                         # shiny::uiOutput("qtl"),
                                         shiny::uiOutput("candidate_genes")),
-                        shiny::tabPanel("Help"))
+                        shiny::tabPanel("Help",
+                                        shiny::uiOutput("help_md")))
   )
 )
 
@@ -497,6 +492,11 @@ server <- function(input, output) {
             
         }
     )
+    
+    # render help markdown
+    output$help_md <- shiny::renderUI({
+        shiny::HTML(markdown::markdownToHTML(knitr::knit('README.md', quiet = TRUE)))
+    })
     
 }
 
