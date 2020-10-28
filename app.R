@@ -1,4 +1,3 @@
-
 library(tidyverse)
 library(linkagemapping)
 library(shiny)
@@ -7,7 +6,7 @@ library(plotly)
 library(fst)
 
 # setwd
-setwd("~/Dropbox/AndersenLab/LabFolders/Katie/git/LM-shiny/")
+# setwd("~/Dropbox/AndersenLab/LabFolders/Katie/git/LM-shiny/")
 # load RIAIL regressed phenotype data to get possible condition/traits
 load("data/N2xCB4856cross_full2.Rda")
 allRIAILsregressed <- fst::read_fst("data/allRIAILsregressed.fst")
