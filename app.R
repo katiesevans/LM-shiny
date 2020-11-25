@@ -4,8 +4,10 @@ library(shiny)
 library(DT)
 library(plotly)
 library(fst)
+library(curl)
 
 # setwd
+# https://github.com/katiesevans/LM-shiny/blob/main/data/drug_data/abamectin-GWER.chromosomal.annotated.fst?raw=true
 # setwd("~/Dropbox/AndersenLab/LabFolders/Katie/git/LM-shiny/")
 # load RIAIL regressed phenotype data to get possible condition/traits
 load("data/N2xCB4856cross_full2.Rda")
@@ -63,7 +65,13 @@ server <- function(input, output) {
         cond <- input$drug_input
         
         # load data
-        annotatedmap <- fst::read_fst(glue::glue("data/drug_data/{cond}-GWER.chromosomal.annotated.fst"))
+        # annotatedmap <- fst::read_fst(glue::glue("data/drug_data/{cond}-GWER.chromosomal.annotated.fst"))
+        
+        # I guess fst can't read directly from internet... this is my workaround for now.
+        tmp_file <- tempfile()
+        fst_url <- glue::glue("https://raw.githubusercontent.com/katiesevans/LM-shiny/main/drug_data/{cond}-GWER.chromosomal.annotated.fst")
+        curl::curl_download(fst_url, tmp_file, mode="wb")
+        annotatedmap <- fst::read_fst(tmp_file)
         
     })
     
