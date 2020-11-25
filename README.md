@@ -22,7 +22,7 @@ Figures and code used to generate all figures (along with absolute file paths to
 - **30 traits**: (cv.EXT, cv.TOF, f.ad, f.L1, f.L2L3, f.L4, iqr.EXT, iqr.TOF, mean.EXT, mean.norm.EXT, mean.TOF, median.EXT, median.norm.EXT, median.TOF, n, norm.n, q10.EXT, q10.norm.EXT, q10.TOF, q25.EXT, q25.norm.EXT, q25.TOF, q75.EXT, q75.norm.EXT, q75.TOF, q90.EXT, q90.norm.EXT, q90.TOF, var.EXT, var.TOF)
   - *Fluorescent traits removed for lack of use and in order to save space*
 - **RIAIL sets**: set1 (Rockman and Kruglyak 2009) & set2 (Andersen *et al.* 2015)
-<img src="riail_info.png"/>
+<img src="https://github.com/katiesevans/LM-shiny/raw/main/riail_info.png"/>
 
 <style type="text/css">
            body {          

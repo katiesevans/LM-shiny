@@ -10,7 +10,9 @@ library(curl)
 # https://github.com/katiesevans/LM-shiny/blob/main/data/drug_data/abamectin-GWER.chromosomal.annotated.fst?raw=true
 # setwd("~/Dropbox/AndersenLab/LabFolders/Katie/git/LM-shiny/")
 # load RIAIL regressed phenotype data to get possible condition/traits
-load("data/N2xCB4856cross_full2.Rda")
+linkagemapping::load_cross_obj("N2xCB4856cross_full")
+data("eQTLpeaks")
+data("probe_info")
 allRIAILsregressed <- fst::read_fst("data/allRIAILsregressed.fst")
 source("query_genes.R")
 
@@ -276,7 +278,7 @@ server <- function(input, output) {
         # made for multiple peaks but I think just one at a time is good.
         all_eQTL <- NULL
         for(i in 1:nrow(peaks)) {
-            test <- eqtlmap %>%
+            test <- eQTLpeaks %>%
                 dplyr::filter(chr == peaks$chr[i],
                               ci_l_pos < peaks$ci_r_pos[i],
                               ci_r_pos > peaks$ci_l_pos[i]) %>%
@@ -285,7 +287,7 @@ server <- function(input, output) {
         }
         
         # combine to get gene names if available
-        newprobes <- all_probe_info %>% 
+        newprobes <- probe_info %>% 
             dplyr::select(probe:wbgene) %>% 
             dplyr::distinct() %>%
             dplyr::group_by(probe) %>%
@@ -488,10 +490,10 @@ server <- function(input, output) {
             # load data
             annotatedmap <- loaddata() %>%
                 dplyr::filter(set == strainset)
-            load("data/N2xCB4856cross_full2.Rda")
             allRIAILsregressed <- fst::read_fst("data/allRIAILsregressed.fst")
-            eqtlmap <- data.table::fread("data/eqtlmap.tsv")
-            all_probe_info <- data.table::fread("data/all_probe_info.tsv.gz")
+            data("eQTLpeaks")
+            data("probe_info")
+            linkagemapping::load_cross_obj("N2xCB4856cross_full")
             gene_annotations <- data.table::fread("data/gene_annotations.tsv.gz")
             
             # Knit the document - use local environment to keep all the ^ above variables ^

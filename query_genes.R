@@ -1,18 +1,21 @@
 library(cegwas2)
+library(linkagemapping)
 
 # load gene descriptions
 # gene_descriptions <- data.table::fread("data/gene_descriptions_WS273.tsv")
 gene_annotations <- data.table::fread("data/gene_annotations.tsv.gz")
-eqtlmap <- data.table::fread("data/eqtlmap.tsv")
+# eqtlmap <- data.table::fread("data/eqtlmap.tsv")
 # eqtl_probes <- data.table::fread("data/eqtl_probes.tsv.gz")
-all_probe_info <- data.table::fread("data/all_probe_info.tsv.gz")
+# all_probe_info <- data.table::fread("data/all_probe_info.tsv.gz")
+data("eQTLpeaks")
+data("probe_info")
 
 # Look for genes in interval
 # new update 20201013 - simpler (better??) eQTL predictions
 query_genes <- function(region, GO = NULL, strain = "CB4856") {
     
     # filter eqtl to > 5% VE
-    eqtlmap2 <- eqtlmap %>%
+    eQTLpeaks2 <- eQTLpeaks %>%
         dplyr::filter(var_exp >= 0.05)
     
     # how many genes are in the interval?
@@ -24,14 +27,14 @@ query_genes <- function(region, GO = NULL, strain = "CB4856") {
     left_pos <- as.numeric(stringr::str_split_fixed(stringr::str_split_fixed(region, ":", 2)[,2], "-", 2)[,1])
     right_pos <- as.numeric(stringr::str_split_fixed(stringr::str_split_fixed(region, ":", 2)[,2], "-", 2)[,2])
     
-    all_eQTL <- eqtlmap2 %>%
+    all_eQTL <- eQTLpeaks2 %>%
         dplyr::filter(chr == chrom,
                       ci_l_pos < right_pos,
                       ci_r_pos > left_pos)
     t2 <- (glue::glue("There are {nrow(all_eQTL)} eQTL ({length(unique(all_eQTL$trait))} traits) with VE > 5% that map to {region}"))
     
     # all eQTL probes
-    all_eQTL_probes <- all_probe_info %>%
+    all_eQTL_probes <- probe_info %>%
         dplyr::filter(probe%in% all_eQTL$trait)
     
     ##############################

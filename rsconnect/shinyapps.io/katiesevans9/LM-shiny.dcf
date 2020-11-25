@@ -5,9 +5,9 @@ account: katiesevans9
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 3062089
-bundleId: 3764767
+bundleId: 3905157
 url: https://katiesevans9.shinyapps.io/LM-shiny/
-when: 1603245913.07556
+when: 1606318816.62633
 asMultiple: FALSE
 asStatic: FALSE
-ignoredFiles: extra_code.R
+ignoredFiles: extra_code.R|drug_data
