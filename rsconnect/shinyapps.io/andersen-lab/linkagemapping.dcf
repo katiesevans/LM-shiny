@@ -1,0 +1,13 @@
+name: linkagemapping
+title: linkagemapping
+username:
+account: andersen-lab
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 3347196
+bundleId: 3939407
+url: https://andersen-lab.shinyapps.io/linkagemapping/
+when: 1607021360.44382
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: make_CB_vcf.R|make_CB_vcf2.R|drug_data

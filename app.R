@@ -1,20 +1,85 @@
-library(tidyverse)
+# library(tidyverse)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
 library(linkagemapping)
 library(shiny)
 library(DT)
 library(plotly)
 library(fst)
 library(curl)
+library('R.utils')
 
-# setwd
-# https://github.com/katiesevans/LM-shiny/blob/main/data/drug_data/abamectin-GWER.chromosomal.annotated.fst?raw=true
-# setwd("~/Dropbox/AndersenLab/LabFolders/Katie/git/LM-shiny/")
 # load RIAIL regressed phenotype data to get possible condition/traits
-linkagemapping::load_cross_obj("N2xCB4856cross_full")
 data("eQTLpeaks")
 data("probe_info")
 allRIAILsregressed <- fst::read_fst("data/allRIAILsregressed.fst")
-source("query_genes.R")
+
+# pxgplot with fake cross object
+pxgplot_fake <- function (cross, map, parent = "N2xCB4856", tsize = 20) {
+    peaks <- map %>% 
+        dplyr::group_by(iteration) %>% 
+        dplyr::filter(!is.na(var_exp)) %>% 
+        dplyr::do(head(., n = 1))
+    if (nrow(peaks) == 0) {
+        stop("No QTL identified")
+    }
+    uniquemarkers <- gsub("-", "\\.", unique(peaks$marker))
+    colnames(cross$pheno) <- gsub("-", "\\.", colnames(cross$pheno))
+    pheno <- cross$pheno %>% dplyr::select_(map$trait[1])
+    # geno <- data.frame(extract_genotype(cross)) %>% 
+    #     dplyr::select(which(colnames(.) %in% uniquemarkers)) %>% 
+    #     data.frame(., pheno)
+    geno <- data.frame(cross$geno$I)
+    geno <- cbind(geno, cross$geno$II)
+    geno <- cbind(geno, cross$geno$III)
+    geno <- cbind(geno, cross$geno$IV)
+    geno <- cbind(geno, cross$geno$V)
+    geno <- cbind(geno, cross$geno$X)
+    geno <- geno %>%
+        dplyr::select(which(colnames(.) %in% uniquemarkers)) %>% 
+        data.frame(., pheno)
+    colnames(geno)[1:(ncol(geno) - 1)] <- sapply(colnames(geno)[1:(ncol(geno) -  1)],
+                                                 function(marker) {paste(unlist(peaks[peaks$marker == gsub("\\.", "-", marker), c("chr", "pos")]), collapse = ":") })
+    colnames(geno)[ncol(geno)] <- "pheno"
+    split <- tidyr::gather(geno, marker, genotype, -pheno)
+    split$genotype <- sapply(split$genotype, function(x) {
+        if (is.na(x)) {
+            return(NA)
+        }
+        if (parent == "N2xCB4856") {
+            if (x == 1) {
+                "N2"
+            }
+            else {
+                "CB4856"
+            }
+        }
+    })
+    split$genotype <- factor(split$genotype, levels = c("N2", "CB4856", "LSJ2", "AF16", "HK104"))
+    split <- split %>% 
+        tidyr::drop_na(genotype) %>% 
+        dplyr::mutate(chr = (as.character(stringr::str_split_fixed(marker, ":", 2)[, 1])), 
+                      pos = as.numeric(as.character(stringr::str_split_fixed(marker, ":", 2)[, 2]))) %>% 
+        dplyr::arrange(chr, pos)
+    split$marker <- factor(split$marker, levels = unique(split$marker))
+    ggplot2::ggplot(split) + ggplot2::scale_fill_manual(values = c(N2 = "orange", CB4856 = "blue", LSJ2 = "green", AF16 = "indianred", HK104 = "gold")) + 
+        ggplot2::geom_jitter(ggplot2::aes(x = genotype, y = pheno), alpha = 0.8, size = 0.5, width = 0.1) + 
+        ggplot2::geom_boxplot(ggplot2::aes(x = genotype, y = pheno, fill = genotype), outlier.shape = NA, alpha = 0.8) + 
+        ggplot2::facet_wrap(~marker, ncol = 5) + ggplot2::theme_bw(tsize) + 
+        ggplot2::theme(axis.text.x = ggplot2::element_text(face = "bold", color = "black"), 
+                       axis.text.y = ggplot2::element_text(face = "bold", color = "black"), 
+                       axis.title.x = ggplot2::element_text(face = "bold", color = "black", vjust = -0.3), 
+                       axis.title.y = ggplot2::element_text(face = "bold", color = "black"), 
+                       strip.text.x = ggplot2::element_text(face = "bold", color = "black"), 
+                       strip.text.y = ggplot2::element_text(face = "bold", color = "black"), 
+                       plot.title = ggplot2::element_text(face = "bold", vjust = 1), 
+                       legend.position = "none", 
+                       panel.background = ggplot2::element_rect(color = "black", size = 1.2)) + 
+        ggplot2::ggtitle(peaks$trait[1]) + 
+        ggplot2::labs(x = "Genotype", y = "Phenotype")
+}
+
 
 # Define UI for application
 ui <- fluidPage(
@@ -167,7 +232,10 @@ server <- function(input, output) {
             dplyr::filter(condition == cond,
                           trait == trt)
         
-        drugcross <- linkagemapping::mergepheno(N2xCB4856cross_full2, pheno, strainset)
+        # drugcross <- linkagemapping::mergepheno(N2xCB4856cross_full2, pheno, strainset)
+        load("data/newcross.Rda")
+        drugcross <- linkagemapping::mergepheno(newcross, pheno, strainset)
+        rm(newcross)
         
         #########
         # Plots #
@@ -218,7 +286,7 @@ server <- function(input, output) {
                 theme(plot.title = element_blank())
             
             if(nrow(traitmap %>% na.omit()) > 0) {
-                pxgplot <- linkagemapping::pxgplot(drugcross, traitmap) +
+                pxgplot <- pxgplot_fake(drugcross, traitmap) +
                     theme(plot.title = element_blank(),
                           panel.grid = element_blank())
             } else {
@@ -252,7 +320,7 @@ server <- function(input, output) {
             h3("QTL peaks:"),
             DT::dataTableOutput("peaks")
         )
-      
+        
     })
     
     get_eQTL <- shiny::reactive({
@@ -389,6 +457,8 @@ server <- function(input, output) {
     # candidate gene function dataframe output
     output$candidate_genes <- shiny::renderUI({
         
+        source("query_genes.R")
+        
         showModal(modalDialog(footer=NULL, size = "l", tags$div(style = "text-align: center;", "Loading...")))
         
         # first, get QTL
@@ -419,11 +489,11 @@ server <- function(input, output) {
         
         # organize data and add wormbase links
         df <- test[[1]] %>%
-            dplyr::group_by(wbgene) %>%
-            dplyr::mutate(go_term = paste(go_term, collapse = "; "),
-                          go_name = paste(go_name, collapse = "; "),
-                          go_description = paste(go_description, collapse = "; ")) %>%
-            dplyr::distinct() %>%
+            # dplyr::group_by(wbgene) %>%
+            # dplyr::mutate(go_term = paste(go_term, collapse = "; "),
+            #               go_name = paste(go_name, collapse = "; "),
+            #               go_description = paste(go_description, collapse = "; ")) %>%
+            # dplyr::distinct() %>%
             dplyr::select(-go_term, -go_description, -gene_class_description, -gene_id, -go_annotation) %>%
             dplyr::rename(GO_term = go_name) %>%
             dplyr::ungroup() %>%
@@ -493,8 +563,9 @@ server <- function(input, output) {
             allRIAILsregressed <- fst::read_fst("data/allRIAILsregressed.fst")
             data("eQTLpeaks")
             data("probe_info")
-            linkagemapping::load_cross_obj("N2xCB4856cross_full")
-            gene_annotations <- data.table::fread("data/gene_annotations.tsv.gz")
+            # linkagemapping::load_cross_obj("N2xCB4856cross_full")
+            load("data/newcross.Rda")
+            gene_annotations <- fst::read_fst("data/gene_annotations.fst")
             
             # Knit the document - use local environment to keep all the ^ above variables ^
             rmarkdown::render(tempReport, output_file = file)
