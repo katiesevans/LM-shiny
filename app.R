@@ -9,6 +9,7 @@ library(plotly)
 library(fst)
 library(curl)
 library('R.utils')
+library(RSQLite)
 
 # load RIAIL regressed phenotype data to get possible condition/traits
 data("eQTLpeaks")
@@ -27,9 +28,6 @@ pxgplot_fake <- function (cross, map, parent = "N2xCB4856", tsize = 20) {
     uniquemarkers <- gsub("-", "\\.", unique(peaks$marker))
     colnames(cross$pheno) <- gsub("-", "\\.", colnames(cross$pheno))
     pheno <- cross$pheno %>% dplyr::select_(map$trait[1])
-    # geno <- data.frame(extract_genotype(cross)) %>% 
-    #     dplyr::select(which(colnames(.) %in% uniquemarkers)) %>% 
-    #     data.frame(., pheno)
     geno <- data.frame(cross$geno$I)
     geno <- cbind(geno, cross$geno$II)
     geno <- cbind(geno, cross$geno$III)
@@ -108,7 +106,9 @@ ui <- fluidPage(
   mainPanel(width = 12,
             
      shiny::tabsetPanel(type = "tabs",
-                        shiny::tabPanel("QTL Analysis: Condition", shiny::plotOutput("genplot", height = "800px")),
+                        # shiny::tabPanel("QTL Analysis: Condition", shiny::plotOutput("genplot", height = "800px")),
+                        shiny::tabPanel("QTL Analysis: Condition", 
+                                        shiny::uiOutput("cond_plot")),
                         shiny::tabPanel("QTL Analysis: Trait",   
                                         shiny::uiOutput("allplots")),
                         shiny::tabPanel("eQTL Overlap",
@@ -143,21 +143,20 @@ server <- function(input, output) {
     })
     
     # plot alllodplots for each condition (or multiple conditions)
-    output$genplot <- shiny::renderPlot({
-        
+    output$cond_plot <- shiny::renderUI({
         showModal(modalDialog(footer=NULL, size = "l", tags$div(style = "text-align: center;", "Loading...")))
         
         # get drug
         cond <- input$drug_input
         strainset <- input$set_input
-
+        
         # load data
         annotatedmap <- loaddata()
         
         # plot all traits
         newmap <- annotatedmap %>%
             na.omit() %>%
-            dplyr::filter(set == strainset)%>%
+            # dplyr::filter(set == strainset)%>%
             arrange(desc(trait)) %>%
             dplyr::mutate(n2res = ifelse(eff_size < 0, "yes", "no"),
                           ci_l_pos = as.numeric(ci_l_pos),
@@ -168,7 +167,7 @@ server <- function(input, output) {
             dplyr::mutate(trait = stringr::str_split_fixed(trait, paste0(cond, "."), 2)[,2])
         
         newmap$trait <- factor(newmap$trait, levels = unique(newmap$trait))
-            
+        
         
         # get chromosome lengths
         chr_lens <- data.frame(chr = c("I", "II", "III", "IV", "V", "X"), 
@@ -180,36 +179,59 @@ server <- function(input, output) {
         removeModal()
         
         # plot
-        ggplot(newmap)+
-            aes(x=pos/1E6, y=trait)+
-            theme_bw() +
-            viridis::scale_fill_viridis(name = "LOD") + 
-            viridis::scale_color_viridis(name = "LOD") +
-            geom_segment(aes(x = ci_l_pos/1e6, y = trait, xend = ci_r_pos/1e6, yend = trait, color = lod), size = 2, alpha = 1) +
-            geom_segment(data=chr_lens, aes(x =  start/1e6, xend = end/1e6, y = trait, yend=trait), color='transparent', size =0.1) +
-            geom_point(aes(fill = lod, shape = n2res), color = "black",size = 3, alpha = 1)+
-            scale_shape_manual(values = c("yes" = 24, "no" = 25)) +
-            xlab("Genomic position (Mb)") + ylab("") +
-            guides(shape = FALSE) +
-            theme(axis.text.x = element_text(size=10, face="bold", color="black"),
-                  axis.ticks.y = element_blank(),
-                  legend.title = element_text(size = 12, face = "bold"), legend.text = element_text(size = 10),
-                  legend.key.size = unit(.75, "cm"),
-                  panel.grid.major.x = element_line(),
-                  panel.grid.major.y = element_line(),
-                  panel.grid.minor.y = element_blank(),
-                  axis.text.y = element_text(size = 10, face = "bold", color = "black"),
-                  axis.title.x = element_text(size=12, face="bold", color= "black"),
-                  axis.title.y = element_blank(),
-                  strip.text.x = element_text(size=12, face="bold", color="black"),
-                  strip.text.y = element_text(size=12, face="bold", color="black", angle = 0),
-                  strip.background = element_rect(colour = "black", fill = "white", size = 0.75, linetype = "solid"),
-                  plot.title = element_text(size=12, face="bold")) +
-            facet_grid(condition ~ chr, scales = "free_x", space = "free")
+        output$genplot <- shiny::renderPlot({
+            
+            # plot
+            ggplot(newmap)+
+                aes(x=pos/1E6, y=trait)+
+                theme_bw() +
+                viridis::scale_fill_viridis(name = "LOD") + 
+                viridis::scale_color_viridis(name = "LOD") +
+                geom_segment(aes(x = ci_l_pos/1e6, y = trait, xend = ci_r_pos/1e6, yend = trait, color = lod), size = 2, alpha = 1) +
+                geom_segment(data=chr_lens, aes(x =  start/1e6, xend = end/1e6, y = trait, yend=trait), color='transparent', size =0.1) +
+                geom_point(aes(fill = lod, shape = n2res), color = "black",size = 3, alpha = 1)+
+                scale_shape_manual(values = c("yes" = 24, "no" = 25)) +
+                xlab("Genomic position (Mb)") + ylab("") +
+                guides(shape = FALSE) +
+                theme(axis.text.x = element_text(size=10, face="bold", color="black"),
+                      axis.ticks.y = element_blank(),
+                      legend.title = element_text(size = 12, face = "bold"), legend.text = element_text(size = 10),
+                      legend.key.size = unit(.75, "cm"),
+                      panel.grid.major.x = element_line(),
+                      panel.grid.major.y = element_line(),
+                      panel.grid.minor.y = element_blank(),
+                      axis.text.y = element_text(size = 10, face = "bold", color = "black"),
+                      axis.title.x = element_text(size=12, face="bold", color= "black"),
+                      axis.title.y = element_blank(),
+                      strip.text.x = element_text(size=12, face="bold", color="black"),
+                      strip.text.y = element_text(size=12, face="bold", color="black", angle = 0),
+                      strip.background = element_rect(colour = "black", fill = "white", size = 0.75, linetype = "solid"),
+                      plot.title = element_text(size=12, face="bold")) +
+                facet_grid(condition ~ chr, scales = "free_x", space = "free")
+        })
+        
+        # peaks data 
+        output$peaksdf <- DT::renderDataTable({
+            newmap %>%
+                dplyr::select(chr, pos, trait, lod, var_exp, eff_size, ci_l_pos, ci_r_pos) %>%
+                dplyr::arrange(desc(trait)) %>%
+                dplyr::mutate(lod = round(lod, digits = 4),
+                              var_exp = round(var_exp, digits = 4),
+                              eff_size = round(eff_size, digits = 4))
+        })
+        
+        removeModal()
+        
+        # what to show
+        tagList(
+            shiny::plotOutput("genplot", height = "800px"),
+            h3("QTL peaks:"),
+            DT::dataTableOutput("peaksdf")
+        )
         
         
     })
-   
+
     # plot linkage defaults (LOD, pxg, riail pheno)
     output$allplots <- shiny::renderUI({
         
@@ -327,51 +349,55 @@ server <- function(input, output) {
         
         # first, get QTL
         qtl_marker <- input$whichqtl
-
-        # define variables
-        trt <- input$trait_input
-        cond <- input$drug_input
-        strainset <- input$set_input
-
-        # load data
-        annotatedmap <- loaddata()
         
-        # filter data
-        peaks <- annotatedmap %>%
-            dplyr::filter(trait == glue::glue("{cond}.{trt}"),
-                          set == strainset) %>%
-            na.omit() %>%
-            dplyr::filter(marker == qtl_marker)
-        
-        # made for multiple peaks but I think just one at a time is good.
-        all_eQTL <- NULL
-        for(i in 1:nrow(peaks)) {
-            test <- eQTLpeaks %>%
-                dplyr::filter(chr == peaks$chr[i],
-                              ci_l_pos < peaks$ci_r_pos[i],
-                              ci_r_pos > peaks$ci_l_pos[i]) %>%
-                dplyr::mutate(QTL = peaks$pos[i])
-            all_eQTL <- rbind(all_eQTL, test)
+        if(qtl_marker != "") {
+            # define variables
+            trt <- input$trait_input
+            cond <- input$drug_input
+            strainset <- input$set_input
+            
+            # load data
+            annotatedmap <- loaddata()
+            
+            # filter data
+            peaks <- annotatedmap %>%
+                dplyr::filter(trait == glue::glue("{cond}.{trt}"),
+                              set == strainset) %>%
+                na.omit() %>%
+                dplyr::filter(marker == qtl_marker)
+            
+            # made for multiple peaks but I think just one at a time is good.
+            all_eQTL <- NULL
+            for(i in 1:nrow(peaks)) {
+                test <- eQTLpeaks %>%
+                    dplyr::filter(chr == peaks$chr[i],
+                                  ci_l_pos < peaks$ci_r_pos[i],
+                                  ci_r_pos > peaks$ci_l_pos[i]) %>%
+                    dplyr::mutate(QTL = peaks$pos[i])
+                all_eQTL <- rbind(all_eQTL, test)
+            }
+            
+            # combine to get gene names if available
+            newprobes <- probe_info %>% 
+                dplyr::select(probe:wbgene) %>% 
+                dplyr::distinct() %>%
+                dplyr::group_by(probe) %>%
+                dplyr::mutate(all_genes = paste(unique(gene), collapse = ", "),
+                              all_genes2 = paste(unique(wbgene), collapse = ", "),
+                              all_genes3 = paste(all_genes, all_genes2, sep = ", ")) %>%
+                dplyr::select(probe, gene = all_genes3) %>%
+                dplyr::mutate(gene = gsub(", NA", "", gene)) %>%
+                dplyr::distinct()
+            all_eQTL <- all_eQTL %>%
+                dplyr::left_join(newprobes, 
+                                 by = c("trait" = "probe")) %>%
+                # color by distant or local (within 1 Mb of peak)
+                dplyr::mutate(class = dplyr::case_when(probe_chr != chr ~ "diff_chr",
+                                                       (probe_start + (probe_stop - probe_start)/2) - pos > 1e6 ~ "distant",
+                                                       TRUE ~ "cis"))
+        } else {
+            all_eQTL <- NULL
         }
-        
-        # combine to get gene names if available
-        newprobes <- probe_info %>% 
-            dplyr::select(probe:wbgene) %>% 
-            dplyr::distinct() %>%
-            dplyr::group_by(probe) %>%
-            dplyr::mutate(all_genes = paste(unique(gene), collapse = ", "),
-                          all_genes2 = paste(unique(wbgene), collapse = ", "),
-                          all_genes3 = paste(all_genes, all_genes2, sep = ", ")) %>%
-            dplyr::select(probe, gene = all_genes3) %>%
-            dplyr::mutate(gene = gsub(", NA", "", gene)) %>%
-            dplyr::distinct()
-        all_eQTL <- all_eQTL %>%
-            dplyr::left_join(newprobes, 
-                             by = c("trait" = "probe")) %>%
-            # color by distant or local (within 1 Mb of peak)
-            dplyr::mutate(class = dplyr::case_when(probe_chr != chr ~ "diff_chr",
-                                                   (probe_start + (probe_stop - probe_start)/2) - pos > 1e6 ~ "distant",
-                                                   TRUE ~ "cis"))
         
     })
     
@@ -387,36 +413,41 @@ server <- function(input, output) {
         
         all_eQTL <- get_eQTL()
         
-        # factor to order chr
-        all_eQTL$chr <- factor(all_eQTL$chr, levels = c("I", "II", "III", "IV", "V", "X"))
-        all_eQTL$probe_chr <- factor(all_eQTL$probe_chr, levels = c("X", "V", "IV", "III", "II", "I"))
-        
-        # plot eQTL peaks
-        tsize <- 12
-        eplot <- ggplot(all_eQTL) +
-            aes(x = pos / 1e6, y = lod, color = class, size = var_exp) +
-            # geom_rect(data=df_chr_length, aes(xmin =  start/1e6, xmax = stop/1e6, ymin = 1, ymax=1.01), color='transparent', fill='transparent', size =0.1, inherit.aes =  F) +
-            geom_point() +
-            facet_grid(~chr, scales = "free", space = "free") +
-            theme_bw(tsize) +
-            labs(x = "QTL position (Mb)", y = "LOD") +
-            scale_color_manual(values = c("cis" = "grey", "distant" = "yellow", "diff_chr" = "red"), name = "Class") +
-            scale_size_continuous(range = c(0.1,2), guide = "none") +
-            theme(panel.grid = element_blank(),
-                  legend.position = "right",
-                  axis.title = element_text(face = "bold"),
-                  axis.text.y = element_text(face = "bold", color = "black"),
-                  axis.text.x = element_text(face = "bold", color = "black", angle = 90),
-                  strip.text = element_text(face = "bold")) +
-            scale_alpha(guide = "none") +
-            geom_vline(aes(xintercept = QTL/1e6), linetype = "dashed", color = "blue")
-        
-        removeModal()
-        
-        plotly::ggplotly(eplot +
-                             aes(text = glue::glue("Probe: {trait}\n Gene: {gene}\n Probe_pos: {probe_chr}:{round(probe_start/1e6, digits = 3)} Mb")), 
+        if(is.null(all_eQTL)) {
+            # plot blank if no eqtl for this trait (no qtl)
+            plotly::ggplotly(ggplot2::ggplot(NULL))
+        } else {
+            # factor to order chr
+            all_eQTL$chr <- factor(all_eQTL$chr, levels = c("I", "II", "III", "IV", "V", "X"))
+            all_eQTL$probe_chr <- factor(all_eQTL$probe_chr, levels = c("X", "V", "IV", "III", "II", "I"))
+            
+            # plot eQTL peaks
+            tsize <- 12
+            eplot <- ggplot(all_eQTL) +
+                aes(x = pos / 1e6, y = lod, color = class, size = var_exp) +
+                # geom_rect(data=df_chr_length, aes(xmin =  start/1e6, xmax = stop/1e6, ymin = 1, ymax=1.01), color='transparent', fill='transparent', size =0.1, inherit.aes =  F) +
+                geom_point() +
+                facet_grid(~chr, scales = "free", space = "free") +
+                theme_bw(tsize) +
+                labs(x = "QTL position (Mb)", y = "LOD") +
+                scale_color_manual(values = c("cis" = "grey", "distant" = "yellow", "diff_chr" = "red"), name = "Class") +
+                scale_size_continuous(range = c(0.1,2), guide = "none") +
+                theme(panel.grid = element_blank(),
+                      legend.position = "right",
+                      axis.title = element_text(face = "bold"),
+                      axis.text.y = element_text(face = "bold", color = "black"),
+                      axis.text.x = element_text(face = "bold", color = "black", angle = 90),
+                      strip.text = element_text(face = "bold")) +
+                scale_alpha(guide = "none") +
+                geom_vline(aes(xintercept = QTL/1e6), linetype = "dashed", color = "blue")
+            
+            removeModal()
+            
+            plotly::ggplotly(eplot +
+                                 aes(text = glue::glue("Probe: {trait}\n Gene: {gene}\n Probe_pos: {probe_chr}:{round(probe_start/1e6, digits = 3)} Mb")), 
                              tooltip = "text")
-
+        }
+    
     })
     
     # eQTL dataframe
@@ -424,10 +455,14 @@ server <- function(input, output) {
         
         all_eQTL <- get_eQTL()
         
-        # clean up and print
-        all_eQTL %>%
-            dplyr::mutate(probe_pos = paste0(probe_chr, "_", probe_start))%>%
-            dplyr::select(probe = trait, eQTL_pos = marker, lod, var_exp, eff_size, ci_l_marker, ci_r_marker, probe_pos, class)
+        if(is.null(all_eQTL)) {
+            data.frame(probe = NA, gene = NA, eQTL_pos = NA, lod = NA, var_exp = NA, eff_size = NA, ci_l_marker = NA, ci_r_marker = NA, probe_pos = NA, class = NA)
+        } else {
+            # clean up and print
+            all_eQTL %>%
+                dplyr::mutate(probe_pos = paste0(probe_chr, "_", probe_start))%>%
+                dplyr::select(probe = trait, gene, eQTL_pos = marker, lod, var_exp, eff_size, ci_l_marker, ci_r_marker, probe_pos, class)
+        }
         
     })
     

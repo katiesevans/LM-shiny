@@ -2,7 +2,12 @@ library(linkagemapping)
 
 # load gene descriptions
 gene_annotations <- fst::read_fst("data/gene_annotations.fst")
-vcf <- fst::read_fst("data/CB4856.smaller.vcf.fst")
+db <- RSQLite::dbConnect(RSQLite::SQLite(), dbname = "data/strain_vcf.db")
+
+# db <- RSQLite::dbConnect(RSQLite::SQLite(), dbname = "https://github.com/katiesevans/LM-shiny/blob/main/data/strain_vcf.db?raw=true")
+
+
+# vcf <- fst::read_fst("data/CB4856.smaller.vcf.fst")
 # data("eQTLpeaks")
 # data("probe_info")
 
@@ -17,10 +22,8 @@ query_genes <- function(region, GO = NULL, strain = "CB4856") {
     
     # how many genes are in the interval?
     # all_genes <- cegwas2::query_vcf(region, impact = "ALL", samples = strain)
-    all_genes <- vcf %>%
-        dplyr::filter(CHROM == chrom,
-                      POS >= left_pos, 
-                      POS <= right_pos)
+    query <- RSQLite::dbSendQuery(db, glue::glue("SELECT * FROM {strain} WHERE ((CHROM = '{chrom}') AND (POS >= {left_pos}) AND (POS <={right_pos}))"))
+    all_genes <- RSQLite::dbFetch(query) 
     t1 <- (glue::glue("There are {length(unique(all_genes$gene_id))} genes in the interval {region}"))
     
     # filter eqtl to > 1% VE

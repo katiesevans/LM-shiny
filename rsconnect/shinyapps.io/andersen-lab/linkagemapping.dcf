@@ -5,9 +5,9 @@ account: andersen-lab
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 3347196
-bundleId: 3939407
+bundleId: 3940035
 url: https://andersen-lab.shinyapps.io/linkagemapping/
-when: 1607021360.44382
+when: 1607030176.79654
 asMultiple: FALSE
 asStatic: FALSE
 ignoredFiles: make_CB_vcf.R|make_CB_vcf2.R|drug_data
