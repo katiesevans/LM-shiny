@@ -19,6 +19,7 @@ allRIAILsregressed <- fst::read_fst("data/allRIAILsregressed.fst")
 # pxgplot with fake cross object
 pxgplot_fake <- function (cross, map, parent = "N2xCB4856", tsize = 20) {
     peaks <- map %>% 
+        na.omit() %>%
         dplyr::group_by(iteration) %>% 
         dplyr::filter(!is.na(var_exp)) %>% 
         dplyr::do(head(., n = 1))
@@ -28,12 +29,19 @@ pxgplot_fake <- function (cross, map, parent = "N2xCB4856", tsize = 20) {
     uniquemarkers <- gsub("-", "\\.", unique(peaks$marker))
     colnames(cross$pheno) <- gsub("-", "\\.", colnames(cross$pheno))
     pheno <- cross$pheno %>% dplyr::select_(map$trait[1])
-    geno <- data.frame(cross$geno$I)
-    geno <- cbind(geno, cross$geno$II)
-    geno <- cbind(geno, cross$geno$III)
-    geno <- cbind(geno, cross$geno$IV)
-    geno <- cbind(geno, cross$geno$V)
-    geno <- cbind(geno, cross$geno$X)
+    
+    # get geno
+    uniquechr <- unique(stringr::str_split_fixed(uniquemarkers, "_", 2)[,1])
+    
+    if(length(uniquechr) > 1) {
+        geno <- data.frame(cross$geno[[uniquechr[1]]])
+        for(i in 2:length(uniquechr)) {
+            geno <- cbind(geno, cross$geno[[uniquechr[i]]])
+        }
+    } else {
+        geno <- data.frame(cross$geno[[uniquechr]])
+    }
+    
     geno <- geno %>%
         dplyr::select(which(colnames(.) %in% uniquemarkers)) %>% 
         data.frame(., pheno)
@@ -94,7 +102,7 @@ ui <- fluidPage(
            # set
            column(2, shiny::radioButtons(inputId = "set_input", label = "RIAIL set:", choices = c(1, 2), selected = 2, inline = TRUE)),
            # trait
-           column(3, shiny::selectInput(inputId = "trait_input", label = "Trait:", choices = unique(allRIAILsregressed$trait))),
+           column(3, shiny::selectInput(inputId = "trait_input", label = "Trait:", choices = c("", unique(allRIAILsregressed$trait)), selected = NULL)),
            # qtl marker
            column(3, shiny::uiOutput("qtl"))
        ),
@@ -105,7 +113,7 @@ ui <- fluidPage(
   # Main panel for plots
   mainPanel(width = 12,
             
-     shiny::tabsetPanel(type = "tabs",
+     shiny::tabsetPanel(type = "tabs", id = "test",
                         # shiny::tabPanel("QTL Analysis: Condition", shiny::plotOutput("genplot", height = "800px")),
                         shiny::tabPanel("QTL Analysis: Condition", 
                                         shiny::uiOutput("cond_plot")),
@@ -126,6 +134,23 @@ ui <- fluidPage(
 # Define server logic 
 server <- function(input, output) {
     
+    # show/hide tabs based on input information
+    shiny::observeEvent(input$trait_input, {
+        if(input$trait_input == ""){ 
+            shiny::hideTab("test",target = "QTL Analysis: Trait") } else {
+            shiny::showTab("test", target = "QTL Analysis: Trait", select = TRUE)
+        }
+    })
+    
+    shiny::observeEvent(input$whichqtl, {
+        if(input$whichqtl == ""){ 
+            shiny::hideTab("test",target = "eQTL Overlap")
+            shiny::hideTab("test",target = "Candidate Genes")} else {
+                shiny::showTab("test",target = "eQTL Overlap", select = TRUE)
+                shiny::showTab("test",target = "Candidate Genes")
+        }
+    })
+    
     # load mapping data per condition
     loaddata <- shiny::reactive({
 
@@ -138,7 +163,12 @@ server <- function(input, output) {
         tmp_file <- tempfile()
         fst_url <- glue::glue("https://raw.githubusercontent.com/katiesevans/LM-shiny/main/drug_data/{cond}-GWER.chromosomal.annotated.fst")
         curl::curl_download(fst_url, tmp_file, mode="wb")
+        
+        # files
         annotatedmap <- fst::read_fst(tmp_file)
+        peaks <- annotatedmap %>%
+            na.omit()
+        list(annotatedmap, peaks)
         
     })
     
@@ -151,12 +181,11 @@ server <- function(input, output) {
         strainset <- input$set_input
         
         # load data
-        annotatedmap <- loaddata()
+        peaks <- loaddata()[[2]]
         
         # plot all traits
-        newmap <- annotatedmap %>%
-            na.omit() %>%
-            # dplyr::filter(set == strainset)%>%
+        newmap <- peaks %>%
+            dplyr::filter(set == strainset)%>%
             arrange(desc(trait)) %>%
             dplyr::mutate(n2res = ifelse(eff_size < 0, "yes", "no"),
                           ci_l_pos = as.numeric(ci_l_pos),
@@ -243,7 +272,7 @@ server <- function(input, output) {
         strainset <- input$set_input
 
         # load data
-        annotatedmap <- loaddata()
+        annotatedmap <- loaddata()[[1]]
 
         # filter data
         traitmap <- annotatedmap %>%
@@ -258,7 +287,7 @@ server <- function(input, output) {
         load("data/newcross.Rda")
         drugcross <- linkagemapping::mergepheno(newcross, pheno, strainset)
         rm(newcross)
-        
+
         #########
         # Plots #
         #########
@@ -356,11 +385,8 @@ server <- function(input, output) {
             cond <- input$drug_input
             strainset <- input$set_input
             
-            # load data
-            annotatedmap <- loaddata()
-            
-            # filter data
-            peaks <- annotatedmap %>%
+            # load and filter data
+            peaks <- loaddata()[[2]] %>%
                 dplyr::filter(trait == glue::glue("{cond}.{trt}"),
                               set == strainset) %>%
                 na.omit() %>%
@@ -423,13 +449,17 @@ server <- function(input, output) {
             
             # plot eQTL peaks
             tsize <- 12
-            eplot <- ggplot(all_eQTL) +
+            eplot <- all_eQTL %>%
+                # dplyr::mutate(n2_res = ifelse(var_exp > 0, "no", "yes")) %>%
+                ggplot(.) +
                 aes(x = pos / 1e6, y = lod, color = class, size = var_exp) +
                 # geom_rect(data=df_chr_length, aes(xmin =  start/1e6, xmax = stop/1e6, ymin = 1, ymax=1.01), color='transparent', fill='transparent', size =0.1, inherit.aes =  F) +
                 geom_point() +
+                # scale_shape_manual(values = c("yes" = 24, "no" = 25), guide = FALSE) +
                 facet_grid(~chr, scales = "free", space = "free") +
                 theme_bw(tsize) +
                 labs(x = "QTL position (Mb)", y = "LOD") +
+                # scale_fill_manual(values = c("cis" = "grey", "distant" = "yellow", "diff_chr" = "red"), name = "Class") +
                 scale_color_manual(values = c("cis" = "grey", "distant" = "yellow", "diff_chr" = "red"), name = "Class") +
                 scale_size_continuous(range = c(0.1,2), guide = "none") +
                 theme(panel.grid = element_blank(),
@@ -444,7 +474,7 @@ server <- function(input, output) {
             removeModal()
             
             plotly::ggplotly(eplot +
-                                 aes(text = glue::glue("Probe: {trait}\n Gene: {gene}\n Probe_pos: {probe_chr}:{round(probe_start/1e6, digits = 3)} Mb")), 
+                                 aes(text = glue::glue("Probe: {trait}\n Gene: {gene}\n Probe_pos: {probe_chr}:{round(probe_start/1e6, digits = 3)} Mb \n {ifelse(var_exp > 0, 'CB4856 resistant', 'N2 resistant')}")), 
                              tooltip = "text")
         }
     
@@ -475,18 +505,16 @@ server <- function(input, output) {
         strainset <- input$set_input
         # interval <- input$intervals
         
-        annotatedmap <- loaddata()
+        peaks <- loaddata()[[2]]
         
         # filter data
-        traitmap <- annotatedmap %>%
+        traitmap <- peaks %>%
             dplyr::filter(trait == glue::glue("{cond}.{trt}"),
-                          set == strainset) %>%
-            na.omit()
+                          set == strainset)
         
         # output
-        tagList(
-            shiny::selectInput(inputId = "whichqtl", label = "Select QTL:", choices = unique(traitmap$marker))
-        )
+        shiny::selectInput(inputId = "whichqtl", label = "Select QTL:", choices = c("", unique(traitmap$marker)), selected = NULL)
+
     })
     
     # candidate gene function dataframe output
@@ -505,13 +533,12 @@ server <- function(input, output) {
         strainset <- input$set_input
         # interval <- input$intervals
         
-        annotatedmap <- loaddata()
+        peaks <- loaddata()[[2]]
         
         # filter data
-        traitmap <- annotatedmap %>%
+        traitmap <- peaks %>%
             dplyr::filter(trait == glue::glue("{cond}.{trt}"),
-                          set == strainset) %>%
-            na.omit()
+                          set == strainset)
         
         # get the region from the marker
         markerdf <- traitmap %>%
@@ -593,7 +620,7 @@ server <- function(input, output) {
             qtl_marker <- input$whichqtl
             
             # load data
-            annotatedmap <- loaddata() %>%
+            annotatedmap <- loaddata()[[1]] %>%
                 dplyr::filter(set == strainset)
             allRIAILsregressed <- fst::read_fst("data/allRIAILsregressed.fst")
             data("eQTLpeaks")

@@ -24,6 +24,7 @@ query_genes <- function(region, GO = NULL, strain = "CB4856") {
     # all_genes <- cegwas2::query_vcf(region, impact = "ALL", samples = strain)
     query <- RSQLite::dbSendQuery(db, glue::glue("SELECT * FROM {strain} WHERE ((CHROM = '{chrom}') AND (POS >= {left_pos}) AND (POS <={right_pos}))"))
     all_genes <- RSQLite::dbFetch(query) 
+    RSQLite::dbDisconnect(db)
     t1 <- (glue::glue("There are {length(unique(all_genes$gene_id))} genes in the interval {region}"))
     
     # filter eqtl to > 1% VE
