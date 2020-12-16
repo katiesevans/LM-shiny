@@ -131,7 +131,10 @@ ui <- fluidPage(
 )
 
 
-# Define server logic 
+#########################################################################################
+###########                          SERVER                                   ###########  
+#########################################################################################
+
 server <- function(input, output) {
     
     # show/hide tabs based on input information
@@ -151,7 +154,9 @@ server <- function(input, output) {
         }
     })
     
-    # load mapping data per condition
+    #############################
+    ####    LOAD DATA        ####
+    #############################
     loaddata <- shiny::reactive({
 
         cond <- input$drug_input
@@ -172,6 +177,9 @@ server <- function(input, output) {
         
     })
     
+    #############################
+    ####    ALL LOD PLOT     ####
+    #############################
     # plot alllodplots for each condition (or multiple conditions)
     output$cond_plot <- shiny::renderUI({
         showModal(modalDialog(footer=NULL, size = "l", tags$div(style = "text-align: center;", "Loading...")))
@@ -207,7 +215,7 @@ server <- function(input, output) {
         
         removeModal()
         
-        # plot
+        ########### PLOT ############
         output$genplot <- shiny::renderPlot({
             
             # plot
@@ -239,7 +247,7 @@ server <- function(input, output) {
                 facet_grid(condition ~ chr, scales = "free_x", space = "free")
         })
         
-        # peaks data 
+        ############## PEAKS DF ###############
         output$peaksdf <- DT::renderDataTable({
             newmap %>%
                 dplyr::select(chr, pos, trait, lod, var_exp, eff_size, ci_l_pos, ci_r_pos) %>%
@@ -261,6 +269,9 @@ server <- function(input, output) {
         
     })
 
+    #############################
+    ####    LOD/PXG PLOT     ####
+    #############################
     # plot linkage defaults (LOD, pxg, riail pheno)
     output$allplots <- shiny::renderUI({
         
@@ -292,7 +303,7 @@ server <- function(input, output) {
         # Plots #
         #########
         
-        # to make barplot a shiny, need to split into separate plots...
+        ################### BAR PLOT RIAIL ###################
         output$barplot <- plotly::renderPlotly({
             # riail pheno plot
             riailset <- drugcross$pheno %>%
@@ -331,7 +342,7 @@ server <- function(input, output) {
             plotly::ggplotly(barplot + aes(text = glue::glue("Strain: {strain}")), tooltip = "text")
         })
         
-        # lod plot
+        ################# LOD & PXG PLOTS ###################
         output$lodplot <- shiny::renderPlot({
             lodplot <- linkagemapping::maxlodplot(traitmap) +
                 theme(plot.title = element_blank())
@@ -350,7 +361,7 @@ server <- function(input, output) {
         })
         
         
-        # peaks data 
+        ################# PEAKS DF ################# 
         output$peaks <- DT::renderDataTable({
             traitmap %>%
                 na.omit() %>%
@@ -374,6 +385,9 @@ server <- function(input, output) {
         
     })
     
+    #############################
+    ####    GET EQTL DATA    ####
+    #############################
     get_eQTL <- shiny::reactive({
         
         # first, get QTL
@@ -432,7 +446,9 @@ server <- function(input, output) {
         input$trait_input
     })
     
-    # Show eQTL overlap
+    #############################
+    ####    EQTL PLOT        ####
+    #############################
     output$eqtlplot <- plotly::renderPlotly({
         
         showModal(modalDialog(footer=NULL, size = "l", tags$div(style = "text-align: center;", "Loading...")))
@@ -480,7 +496,9 @@ server <- function(input, output) {
     
     })
     
-    # eQTL dataframe
+    #############################
+    ####    EQTL DATA        ####
+    #############################
     output$eqtl_data <- DT::renderDataTable({
         
         all_eQTL <- get_eQTL()
@@ -496,7 +514,7 @@ server <- function(input, output) {
         
     })
     
-    # get list of QTL to choose from
+    ########## QTL INPUT SHINY ###########
     output$qtl <- shiny::renderUI({
         
         # get inputs
@@ -517,7 +535,9 @@ server <- function(input, output) {
 
     })
     
-    # candidate gene function dataframe output
+    #############################
+    ####  GENES GENES GENES  ####
+    #############################
     output$candidate_genes <- shiny::renderUI({
         
         source("query_genes.R")
@@ -564,11 +584,12 @@ server <- function(input, output) {
         
         removeModal()
 
+        ############# GENE DF #############
         output$dataframe <- DT::renderDataTable(escape = FALSE, {
             df
         })
         
-        # might need to structure this text
+        ############ GENE TEXT ############
         output$gene_text <- shiny::renderUI({
 
             # print as bullets
@@ -594,7 +615,9 @@ server <- function(input, output) {
 
     })
     
-    # download report
+    #############################
+    ####  MARKDOWN DOWNLOAD  ####
+    #############################
     output$code_download <- shiny::downloadHandler(
         
         # Dynamic file name -- WHY IS THIS ONLY PARTIALLY WORKING?
@@ -625,8 +648,8 @@ server <- function(input, output) {
             allRIAILsregressed <- fst::read_fst("data/allRIAILsregressed.fst")
             data("eQTLpeaks")
             data("probe_info")
-            # linkagemapping::load_cross_obj("N2xCB4856cross_full")
-            load("data/newcross.Rda")
+            linkagemapping::load_cross_obj("N2xCB4856cross_full")
+            # load("data/newcross.Rda")
             gene_annotations <- fst::read_fst("data/gene_annotations.fst")
             
             # Knit the document - use local environment to keep all the ^ above variables ^

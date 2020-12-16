@@ -34,12 +34,13 @@ if(strainset == 2) {
 
 # download RIAIL phenotype and genotype data from Andersen Lab Dropbox
 load("~/Dropbox/AndersenLab/RCode/Linkage mapping/RIAILsMappings/RIAIL_data/allRIAILsregressed.Rda")
-# >> This (below) is also in linkagemapping::load_cross_obj("N2xCB4856cross_full")
-load("~/Dropbox/AndersenLab/RCode/Linkage mapping/RIAILsMappings/RIAIL_data/N2xCB4856cross_full2.Rda") 
+# cross object - complicated data file containing RIAIL genotypes at 13,003 markers
+linkagemapping::load_cross_obj("N2xCB4856cross_full")
 
-# load eQTL data from Andersen Lab Dropbox
-eqtlmap <- data.table::fread("~/Dropbox/AndersenLab/RCode/Linkage mapping/eQTLmapping/eqtlmap.tsv")
-load("~/Dropbox/AndersenLab/RCode/Linkage mapping/eQTLmapping/all_probe_info.Rda")
+# load eQTL data from Rockman 2010 (updated Evans and Andersen 2020) from Linkagemapping package
+data("eQTLpeaks")
+data("probe_info")
+# can also download eQTL probe expression phenotypes with `data("eqtlpheno")`
 load("~/Dropbox/AndersenLab/RCode/Linkage mapping/gene_annotations.Rda")
 
 ```
@@ -49,32 +50,33 @@ load("~/Dropbox/AndersenLab/RCode/Linkage mapping/gene_annotations.Rda")
 # source function for query_genes originally here: ~/Dropbox/AndersenLab/LabFolders/Katie/scripts_kse/NIL_narrowing.R
 query_genes <- function(region, GO = NULL, strain = "CB4856") {
     
-    # filter eqtl to > 5% VE
-    eqtlmap2 <- eqtlmap %>%
-        dplyr::filter(var_exp >= 0.05)
-    
-    # how many genes are in the interval?
-    all_genes <- cegwas2::query_vcf(region, impact = "ALL", samples = strain)
-    print(glue::glue("There are {length(unique(all_genes$gene_id))} genes in the interval {region}"))
-    
-    # how many eQTL map to this region?
+    # Region
     chrom <- stringr::str_split_fixed(region, ":", 2)[,1]
     left_pos <- as.numeric(stringr::str_split_fixed(stringr::str_split_fixed(region, ":", 2)[,2], "-", 2)[,1])
     right_pos <- as.numeric(stringr::str_split_fixed(stringr::str_split_fixed(region, ":", 2)[,2], "-", 2)[,2])
     
-    all_eQTL <- eqtlmap2 %>%
+    # how many genes are in the interval?
+    all_genes <- cegwas2::query_vcf(region, impact = "ALL", samples = strain)
+    t1 <- (glue::glue("There are {length(unique(all_genes$gene_id))} genes in the interval {region}"))
+    
+    # filter eqtl to > 1% VE
+    eQTLpeaks2 <- eQTLpeaks %>%
+        dplyr::filter(var_exp >= 0.01)
+    
+    # how many eQTL map to this region?
+    all_eQTL <- eQTLpeaks2 %>%
         dplyr::filter(chr == chrom,
                       ci_l_pos < right_pos,
                       ci_r_pos > left_pos)
-    print(glue::glue("There are {nrow(all_eQTL)} eQTL ({length(unique(all_eQTL$trait))} traits) with VE > 5% that map to {region}"))
+    t2 <- (glue::glue("There are {nrow(all_eQTL)} eQTL ({length(unique(all_eQTL$trait))} traits) with VE > 5% that map to {region}"))
     
     # all eQTL probes
-    all_eQTL_probes <- all_probe_info %>%
+    all_eQTL_probes <- probe_info %>%
         dplyr::filter(probe%in% all_eQTL$trait)
     
-    ################################################################################
-    # highlight which probes don't map to a gene (some might need fixing by hand)
-    ################################################################################
+    ##############################
+    # if wbgene is NA - try to fix
+    ##############################
     
     # filter na
     # filter na
@@ -84,17 +86,17 @@ query_genes <- function(region, GO = NULL, strain = "CB4856") {
         dplyr::filter(num_na == 1)
     
     unique_probes <- paste(unique(na1$probe), collapse = ",")
-    print(glue::glue("There are {nrow(na1)} genes with an eQTL that need to be hand curated: {unique_probes}"))
+    t3 <- (glue::glue("There are {nrow(na1)} genes with an eQTL that need to be hand curated: {unique_probes}"))
     
-    ################################################################################
+    ##################################
     
     # which of the eQTL are overlapping with genes in interval?
     eQTL_outside_CI <- all_eQTL_probes %>%
         dplyr::filter(!wbgene %in% all_genes$gene_id)
-    print(glue::glue("There are {nrow(all_eQTL)-length(unique(eQTL_outside_CI$wbgene))-nrow(na1)} genes in the region with an eQTL, {length(unique(eQTL_outside_CI$wbgene))} genes outside the region with an eQTL, and {nrow(na1)} unknown"))
+    t4 <- (glue::glue("There are {nrow(all_eQTL)-length(unique(eQTL_outside_CI$wbgene))-nrow(na1)} genes in the region with an eQTL, {length(unique(eQTL_outside_CI$wbgene))} genes outside the region with an eQTL, and {nrow(na1)} unknown"))
     
     # Total genes of interest:
-    print(glue::glue("There are at least {length(unique(all_genes$gene_id)) + length(unique(eQTL_outside_CI$wbgene))} total genes of interest."))
+    t5 <- (glue::glue("There are at least {length(unique(all_genes$gene_id)) + length(unique(eQTL_outside_CI$wbgene))} total genes of interest."))
     
     # how many of the genes in interval have variation?
     vars <- all_genes %>%
@@ -104,15 +106,16 @@ query_genes <- function(region, GO = NULL, strain = "CB4856") {
     # genes with protein coding vars
     proteincode <- vars %>%
         dplyr::filter(impact %in% c("MODERATE", "HIGH"))
-    print(glue::glue("There are {length(unique(vars$gene_id))}/{length(unique(all_genes$gene_id))} genes in interval with genetic variation, {length(unique(proteincode$gene_id))}/{length(unique(vars$gene_id))} have protein-coding variation"))
-    
+    t6 <- (glue::glue("There are {length(unique(vars$gene_id))}/{length(unique(all_genes$gene_id))} genes in interval with genetic variation, {length(unique(proteincode$gene_id))}/{length(unique(vars$gene_id))} have protein-coding variation"))
+        
     # return final dataframe with all info (might be off, only has 133 instead of 134?)
     total_genes <- gene_annotations %>%
         dplyr::filter(wbgene %in% c(all_genes$gene_id, eQTL_outside_CI$wbgene)) %>%
         dplyr::mutate(inside_CI = ifelse(wbgene %in% all_genes$gene_id, T, F),
                       eqtl = ifelse(wbgene %in% all_eQTL_probes$wbgene, T, F),
                       vars = ifelse(wbgene %in% vars$gene_id, T, F),
-                      pc_vars = ifelse(wbgene %in% proteincode$gene_id, T, F))
+                      pc_vars = ifelse(wbgene %in% proteincode$gene_id, T, F),
+                      go_annotation = NA)
     
     distinct <- total_genes %>%
         dplyr::distinct(wbgene, .keep_all = T)
@@ -126,11 +129,12 @@ query_genes <- function(region, GO = NULL, strain = "CB4856") {
     # eQTL alone
     e <- nrow(distinct %>% dplyr::filter(pc_vars == F, eqtl == T))
     
-    print(glue::glue("There are {pc + pc_eqtl + e} genes with protein-coding variation and/or an eQTL (top priority)"))
+    t7 <- (glue::glue("There are {pc + pc_eqtl + e} genes with protein-coding variation and/or an eQTL (top priority)"))
     
-    # return total genes
-    return(total_genes)
-}    
+    text_element <- c(t1, t2, t3, t4, t5, t6, t7)
+    
+    return(list(total_genes, text_element))
+}      
 
 ```
 
@@ -151,7 +155,6 @@ newmap <- annotatedmap %>%
 
 newmap$trait <- factor(newmap$trait, levels = unique(newmap$trait))
     
-
 # get chromosome lengths
 chr_lens <- data.frame(chr = c("I", "II", "III", "IV", "V", "X"), 
                        start = rep(1,6), 
@@ -214,7 +217,6 @@ drugcross <- linkagemapping::mergepheno(N2xCB4856cross_full2, pheno, strainset)
 ####################
 # RIAIL pheno plot #
 ####################
-
 
 # only show RIAILs in the specific set
 riailset <- drugcross$pheno %>%
@@ -310,12 +312,12 @@ peaks <- annotatedmap %>%
 
 # get all overlapping eQTL and add the gene names (if known) for each eQTL probe
 if(nrow(peaks > 0)) {
-    all_eQTL <- eqtlmap %>%
+    all_eQTL <- eQTLpeaks %>%
         dplyr::filter(chr == peaks$chr,
                       ci_l_pos < peaks$ci_r_pos,
                       ci_r_pos > peaks$ci_l_pos) %>%
         dplyr::mutate(QTL = peaks$pos) %>%
-    dplyr::left_join(all_probe_info %>% 
+    dplyr::left_join(probe_info %>% 
                             dplyr::select(probe:wbgene) %>% 
                             dplyr::distinct() %>%
                             dplyr::group_by(probe) %>%
@@ -381,7 +383,7 @@ if(nrow(markerdf > 0)) {
     all_genes <- query_genes(markerdf$reg)
 
     # want a cleaner dataframe with each gene per line?
-    clean_genes <- all_genes%>%
+    clean_genes <- all_genes %>%
         dplyr::group_by(wbgene) %>%
         dplyr::mutate(go_term = paste(go_term, collapse = "; "),
                       go_name = paste(go_name, collapse = "; "),
@@ -393,7 +395,5 @@ if(nrow(markerdf > 0)) {
                       dplyr::select(-go_term, -go_description, -gene_class_description, -gene_id) %>%
                       dplyr::rename(GO_term = go_name))
 }
-
-
 
 ```
