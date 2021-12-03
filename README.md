@@ -2,7 +2,7 @@
 
 This R shiny web application was created (2020) to easily browse linkage mapping analyses from the Andersen Lab drug conditions (phenotypes collected 2014).
 
-***Link to Shiny app: [here]***
+***Link to Shiny app: [here](https://andersen-lab.shinyapps.io/linkagemapping/)***
 
 ## Explanation of Functionality
 To begin, user can select one of the provided conditions and RIAIL set (see below for details). A summary of each tab can be found as follows:
